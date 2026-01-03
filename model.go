@@ -8,8 +8,19 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const FPS = 60
+const FPS = 30
 const FRAME_DURATION = time.Second / FPS
+
+type Gamestate int
+
+const (
+	Ready Gamestate = 1 << iota
+	Pause
+)
+
+func (g Gamestate) String() string {
+	return [...]string{"", "Ready", "Pause"}[g]
+}
 
 var AgeToAscii = map[int]rune{
 	0: ' ',
@@ -21,7 +32,7 @@ var AgeToAscii = map[int]rune{
 
 type Gof struct {
 	generation      int
-	gameState       string
+	gameState       Gamestate
 	age             [][]int
 	width           int
 	height          int
@@ -101,14 +112,18 @@ func (g Gof) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return g, nil
 	case tea.KeyMsg:
+		if msg.String() == "p" {
+			g.gameState = Pause ^ Ready ^ g.gameState
+			return g, doTick()
+		}
 		return g, tea.Quit
 	case tea.WindowSizeMsg:
-		if g.gameState == "Ready" {
+		if g.gameState == Ready {
 			return g, nil
 		}
 		g.width = msg.Width
 		g.height = msg.Height - 1
-		g.gameState = "Ready"
+		g.gameState = Ready
 		age := [][]int{}
 		for range g.height {
 			lage := make([]int, g.width)
@@ -123,6 +138,9 @@ func (g Gof) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		g.age = age
 		return g, doTick()
 	case Update:
+		if g.gameState == Pause {
+			return g, doTick()
+		}
 		return g.getNextState(), doTick()
 	default:
 		return g, nil
@@ -130,19 +148,18 @@ func (g Gof) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (g Gof) View() string {
-	if g.gameState != "Ready" {
-		return "Initializing...!"
-	}
 	s := fmt.Sprintf("Generation: %d", g.generation)
 	mouse := fmt.Sprintf("Location: (%d,%d)", g.x, g.y)
-	for range g.width - (len(s) + len(mouse)) {
+	gameState := fmt.Sprintf("%s", g.gameState)
+	for range g.width - (len(s) + len(mouse) + len(gameState) + 1) {
 		s += " "
 	}
+	s += gameState + " "
 	s += mouse
 	for _, y := range g.age {
 		ls := ""
 		for _, x := range y {
-			age := min(len(AgeToAscii), x)
+			age := min(len(AgeToAscii)-1, x)
 			ls += fmt.Sprintf("%s", string(AgeToAscii[age]))
 		}
 		s += ls + "\n"
